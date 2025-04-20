@@ -3,6 +3,7 @@ import json
 import uuid
 from datetime import datetime
 import requests
+import threading
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from flask_cors import CORS
@@ -27,6 +28,19 @@ class CustomJSONEncoder(json.JSONEncoder):
         if isinstance(obj, datetime):
             return obj.isoformat()
         return super().default(obj)
+
+def keep_alive():
+    """Ping self every 30 seconds to prevent Render from idling"""
+    while True:
+        try:
+            requests.head("https://revi-e1od.onrender.com")
+        except Exception:
+            pass  # Ignore any errors
+        threading.Event().wait(30)  # Wait 30 seconds
+
+# Start keep-alive thread before app runs
+keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
+keep_alive_thread.start()
 
 app = Flask(__name__)
 
