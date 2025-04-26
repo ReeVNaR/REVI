@@ -2,77 +2,158 @@
 <html>
 <head>
     <title>REVI AI Assistant</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 20px auto;
-            padding: 0 20px;
-            background-color: #f5f5f5;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
         }
-        #chat-container {
-            height: 70vh;
-            border: 1px solid #ddd;
-            border-radius: 8px;
+
+        .chat-container {
+            flex: 1;
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+            background: #fff;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .chat-header {
+            padding: 20px;
+            background: #fff;
+            border-bottom: 1px solid #eee;
+            text-align: center;
+        }
+
+        .chat-header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: #333;
+        }
+
+        #chat-messages {
+            flex: 1;
             overflow-y: auto;
             padding: 20px;
-            background-color: white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
         }
+
+        .message {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            max-width: 80%;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .user-message {
+            margin-left: auto;
+            flex-direction: row-reverse;
+        }
+
+        .message-bubble {
+            padding: 12px 16px;
+            border-radius: 12px;
+            line-height: 1.5;
+            font-size: 0.95rem;
+        }
+
+        .user-message .message-bubble {
+            background: #2b7fff;
+            color: white;
+            border-top-right-radius: 4px;
+        }
+
+        .bot-message .message-bubble {
+            background: #f0f2f5;
+            color: #333;
+            border-top-left-radius: 4px;
+        }
+
         .input-area {
+            padding: 20px;
+            background: #fff;
+            border-top: 1px solid #eee;
+        }
+
+        .input-container {
             display: flex;
             gap: 10px;
-            margin-top: 20px;
+            max-width: 800px;
+            margin: 0 auto;
         }
+
         #message-input {
             flex: 1;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 16px;
+            padding: 12px 16px;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: border-color 0.3s ease;
         }
+
+        #message-input:focus {
+            outline: none;
+            border-color: #2b7fff;
+        }
+
         button {
-            padding: 12px 24px;
-            background-color: #007bff;
+            padding: 12px 20px;
+            background: #2b7fff;
             color: white;
             border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        .message {
-            margin: 8px 0;
-            padding: 10px;
             border-radius: 8px;
-            max-width: 80%;
+            cursor: pointer;
+            transition: background 0.3s ease;
         }
-        .user-message {
-            background-color: #007bff;
-            color: white;
-            margin-left: auto;
+
+        button:hover {
+            background: #1a6def;
         }
-        .bot-message {
-            background-color: #e9ecef;
-            color: #212529;
+
+        .reset-button {
+            background: #dc3545;
+        }
+
+        .reset-button:hover {
+            background: #bb2d3b;
         }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 </head>
 <body>
-    <h1>REVI AI Assistant</h1>
-    <div id="chat-container"></div>
-    <div class="input-area">
-        <input type="text" id="message-input" placeholder="Type your message here...">
-        <button onclick="sendMessage()">Send</button>
-        <button onclick="resetChat()" style="background-color: #dc3545;">Reset</button>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1><i class="fas fa-robot"></i> REVI AI Assistant</h1>
+        </div>
+        <div id="chat-messages"></div>
+        <div class="input-area">
+            <div class="input-container">
+                <input type="text" id="message-input" placeholder="Type your message...">
+                <button onclick="sendMessage()">Send</button>
+                <button onclick="resetChat()" class="reset-button">Reset</button>
+            </div>
+        </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script>
         const socket = io();
-        const chatContainer = document.getElementById('chat-container');
+        const chatMessages = document.getElementById('chat-messages');
         const messageInput = document.getElementById('message-input');
         let isConnected = false;
 
@@ -94,9 +175,14 @@
         function appendMessage(message, className) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${className}`;
-            messageDiv.textContent = className === 'user-message' ? 'You: ' + message : 'AI: ' + message;
-            chatContainer.appendChild(messageDiv);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            bubble.textContent = message;
+            
+            messageDiv.appendChild(bubble);
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
         function sendMessage() {
@@ -123,7 +209,7 @@
         function resetChat() {
             if (isConnected) {
                 socket.emit('message', 'reset');
-                chatContainer.innerHTML = '';
+                chatMessages.innerHTML = '';
             }
         }
 
