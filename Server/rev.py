@@ -33,7 +33,7 @@ def keep_alive():
     """Ping self every 30 seconds to prevent Render from idling"""
     while True:
         try:
-            requests.head("https://revi-e1od.onrender.com")
+            requests.head("https://revi-cdeo.onrender.com")
         except Exception:
             pass  # Ignore any errors
         threading.Event().wait(30)  # Wait 30 seconds
