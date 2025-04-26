@@ -1,45 +1,52 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [username, setUsername] = useState(localStorage.getItem('username'));
+  const [loading, setLoading] = useState(true);
 
-  const login = async (newToken, newUsername) => {
-    setToken(newToken);
-    setUsername(newUsername);
+  useEffect(() => {
+    // Verify token on mount
+    setLoading(false);
+  }, []);
+
+  const login = (newToken, newUsername) => {
     localStorage.setItem('token', newToken);
     localStorage.setItem('username', newUsername);
-    
-    // Create new session after login
-    try {
-      const response = await fetch('http://localhost:5000/sessions', {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${newToken}`,
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include'
-      });
-      if (!response.ok) throw new Error('Failed to create initial session');
-    } catch (err) {
-      console.error('Failed to create initial session:', err);
-    }
+    setToken(newToken);
+    setUsername(newUsername);
   };
 
   const logout = () => {
-    setToken(null);
-    setUsername(null);
     localStorage.removeItem('token');
     localStorage.removeItem('username');
+    setToken(null);
+    setUsername(null);
+  };
+
+  const value = {
+    token,
+    username,
+    loading,
+    login,
+    logout,
   };
 
   return (
-    <AuthContext.Provider value={{ token, username, login, logout }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+export default AuthContext;

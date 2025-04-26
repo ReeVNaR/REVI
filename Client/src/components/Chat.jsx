@@ -1,179 +1,155 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import api from '../utils/axios';
-import ChatArea from './chat/ChatArea';
-import DynamicSidebar from './chat/DynamicSidebar';
+import { useAuth } from '../context/AuthContext';
 
 function Chat() {
-  const { token, username, logout } = useAuth();
-  const navigate = useNavigate();
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
   const [sessions, setSessions] = useState([]);
   const [currentSession, setCurrentSession] = useState(null);
-  const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
-  const [deletingSession, setDeletingSession] = useState(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
+  const { username } = useAuth();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
-    fetchSessions();
-  }, [token]); // Add token as dependency to refetch when logged in
+    loadSessions();
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [currentSession]);
+  }, [messages]);
 
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth >= 768) {
-        setIsSidebarOpen(true);
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  const fetchSessions = async () => {
+  const loadSessions = async () => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      if (!token) {
-        navigate('/login');
-        return;
-      }
-
-      const { data } = await api.get('/sessions');
-      // Filter out and delete empty sessions
-      const emptySessionIds = data
-        .filter(session => !session.messages || session.messages.length === 0)
-        .map(session => session._id);
-
-      // Delete empty sessions in parallel
-      if (emptySessionIds.length > 0) {
-        await Promise.all(
-          emptySessionIds.map(id => api.delete(`/sessions/${id}`))
-        );
-      }
-
-      // Keep only non-empty sessions
-      const validSessions = data.filter(session => session.messages && session.messages.length > 0);
-      setSessions(validSessions);
-      
-      if (validSessions.length > 0) {
-        setCurrentSession(validSessions[0]);
-      } else {
-        // Create a new session if all were empty
+      const response = await api.get('/sessions');
+      setSessions(response.data);
+      if (response.data.length === 0) {
         createNewSession();
-      }
-    } catch (err) {
-      if (err.response?.status === 401) {
-        logout();
-        navigate('/login');
       } else {
-        setError('Failed to load sessions. Please try again.');
+        setCurrentSession(response.data[0]);
+        loadMessages(response.data[0]._id);
       }
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      console.error('Error loading sessions:', error);
     }
   };
 
   const createNewSession = async () => {
     try {
-      setLoading(true);
-      const { data } = await api.post('/sessions');
-      setCurrentSession(data);
-      setSessions([data, ...sessions]);
-      if (window.innerWidth < 768) {
-        setIsSidebarOpen(false);
-      }
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create session');
-      console.error('Failed to create session:', err);
-    } finally {
-      setLoading(false);
+      const response = await api.post('/sessions');
+      setCurrentSession(response.data);
+      setSessions([response.data, ...sessions]);
+      setMessages([]);
+    } catch (error) {
+      console.error('Error creating session:', error);
+    }
+  };
+
+  const loadMessages = async (sessionId) => {
+    try {
+      const response = await api.get(`/sessions/${sessionId}`);
+      setMessages(response.data.messages || []);
+    } catch (error) {
+      console.error('Error loading messages:', error);
     }
   };
 
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (!message.trim() || !currentSession) return;
+    if (!input.trim() || !currentSession) return;
+
+    const userMessage = { role: 'user', parts: [{ text: input }] };
+    setMessages([...messages, userMessage]);
+    setInput('');
 
     try {
-      const currentMessage = message;
-      setMessage('');
-      
-      // Optimistically update UI
-      const optimisticSession = {
-        ...currentSession,
-        messages: [...(currentSession.messages || []), {
-          role: 'user',
-          parts: [{ text: currentMessage }]
-        }]
-      };
-      setCurrentSession(optimisticSession);
-
-      const { data } = await api.post(`/sessions/${currentSession._id}/chat`, {
-        message: currentMessage
+      const response = await api.post(`/sessions/${currentSession._id}/chat`, {
+        message: input
       });
       
-      setCurrentSession(data.session);
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to send message');
-      console.error('Failed to send message:', err);
-    }
-  };
-
-  const handleDeleteSession = async (sessionId) => {
-    try {
-      setLoading(true);
-      await api.delete(`/sessions/${sessionId}`);
-      setSessions(sessions.filter(s => s._id !== sessionId));
-      
-      // Immediately create new session
-      const { data } = await api.post('/sessions');
-      setSessions(prevSessions => [data, ...prevSessions.filter(s => s._id !== sessionId)]);
-      setCurrentSession(data);
-    } catch (err) {
-      setError('Failed to delete session');
-      console.error('Failed to delete session:', err);
-    } finally {
-      setLoading(false);
+      setMessages([...messages, userMessage, {
+        role: 'model',
+        parts: [{ text: response.data.response }]
+      }]);
+    } catch (error) {
+      console.error('Error sending message:', error);
     }
   };
 
   return (
-    <div className="flex h-screen bg-[#343541]">
-      <DynamicSidebar
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        sessions={sessions}
-        currentSession={currentSession}
-        onSessionSelect={(session) => {
-          setCurrentSession(session);
-          if (window.innerWidth < 768) setIsSidebarOpen(false);
-        }}
-        onNewChat={createNewSession}
-        onDeleteSession={handleDeleteSession}
-      />
-      <div className="flex-1 flex flex-col min-w-0">
-        <ChatArea
-          session={currentSession}
-          username={username}
-          loading={loading}
-          message={message}
-          setMessage={setMessage}
-          onSendMessage={sendMessage}
-          onDeleteSession={handleDeleteSession}
-          onNewChat={createNewSession}
-          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-        />
+    <div className="flex h-screen bg-gray-100">
+      <div className="w-64 bg-gray-900 text-white">
+        <button
+          onClick={createNewSession}
+          className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium"
+        >
+          New Chat
+        </button>
+        <div className="overflow-y-auto h-[calc(100vh-4rem)]">
+          {sessions.map((session) => (
+            <div
+              key={session._id}
+              className={`px-4 py-2 cursor-pointer hover:bg-gray-800 ${
+                currentSession?._id === session._id ? 'bg-gray-800' : ''
+              }`}
+              onClick={() => {
+                setCurrentSession(session);
+                loadMessages(session._id);
+              }}
+            >
+              {session.title || 'New Chat'}
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      <div className="flex-1 flex flex-col">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.map((msg, index) => (
+            <div
+              key={index}
+              className={`flex items-start space-x-3 ${
+                msg.role === 'user' ? 'justify-end' : 'justify-start'
+              }`}
+            >
+              <div
+                className={`rounded-lg p-4 max-w-[80%] ${
+                  msg.role === 'user'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-900'
+                }`}
+              >
+                {msg.parts[0].text}
+              </div>
+            </div>
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+        
+        <form
+          onSubmit={sendMessage}
+          className="border-t border-gray-200 p-4 bg-white"
+        >
+          <div className="flex space-x-4">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Type a message..."
+            />
+            <button
+              type="submit"
+              disabled={!input.trim()}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
