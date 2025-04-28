@@ -142,6 +142,18 @@
             border-top-left-radius: 4px;
         }
 
+        .typing-text {
+            overflow: hidden;
+            white-space: pre-wrap;
+            word-break: break-word;
+            animation: none;
+        }
+
+        @keyframes typing {
+            from { width: 0 }
+            to { width: 100% }
+        }
+
         .input-area {
             padding: 24px;
             border-top: 1px solid #eaeaea;
@@ -367,11 +379,35 @@
             
             const bubble = document.createElement('div');
             bubble.className = 'message-bubble';
-            bubble.textContent = message;
             
-            messageDiv.appendChild(avatar);
-            messageDiv.appendChild(bubble);
-            chatMessages.appendChild(messageDiv);
+            if (className === 'bot-message') {
+                const textSpan = document.createElement('span');
+                textSpan.className = 'typing-text';
+                bubble.appendChild(textSpan);
+                
+                messageDiv.appendChild(avatar);
+                messageDiv.appendChild(bubble);
+                chatMessages.appendChild(messageDiv);
+                
+                // Typing effect
+                let i = 0;
+                const speed = 30; // ms per character
+                function typeWriter() {
+                    if (i < message.length) {
+                        textSpan.textContent += message.charAt(i);
+                        i++;
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                        setTimeout(typeWriter, speed);
+                    }
+                }
+                typeWriter();
+            } else {
+                bubble.textContent = message;
+                messageDiv.appendChild(avatar);
+                messageDiv.appendChild(bubble);
+                chatMessages.appendChild(messageDiv);
+            }
+            
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
