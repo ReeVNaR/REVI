@@ -142,16 +142,57 @@
             border-top-left-radius: 4px;
         }
 
-        .typing-text {
-            overflow: hidden;
-            white-space: pre-wrap;
-            word-break: break-word;
-            animation: none;
+        .message-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 4px;
         }
 
-        @keyframes typing {
-            from { width: 0 }
-            to { width: 100% }
+        .timestamp {
+            opacity: 0.8;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .status-indicator i {
+            font-size: 0.8rem;
+        }
+
+        .typing-text {
+            display: inline-block;
+            position: relative;
+            min-height: 20px;
+            cursor: default;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1em;
+            background: currentColor;
+            margin-left: 2px;
+            animation: blink 1s infinite;
+            opacity: 0;
+        }
+
+        @keyframes blink {
+            50% { opacity: 1; }
+        }
+
+        .error-message {
+            color: #dc3545;
+            padding: 8px;
+            border-radius: 8px;
+            background: #fee2e2;
+            margin: 8px 0;
+            font-size: 0.9rem;
         }
 
         .input-area {
@@ -306,6 +347,9 @@
             -webkit-overflow-scrolling: touch;
         }
     </style>
+
+    <audio id="message-sent" src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3" preload="auto"></audio>
+    <audio id="message-received" src="https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3" preload="auto"></audio>
 </head>
 <body>
     <div class="chat-container">
@@ -327,7 +371,10 @@
         const socket = io();
         const chatMessages = document.getElementById('chat-messages');
         const messageInput = document.getElementById('message-input');
+        const messageSentSound = document.getElementById('message-sent');
+        const messageReceivedSound = document.getElementById('message-received');
         let isConnected = false;
+        let errorTimeout;
 
         socket.on('connect', () => {
             isConnected = true;
@@ -343,6 +390,23 @@
             appendMessage(data, 'bot-message');
             enableInput();
         });
+
+        function formatTimestamp(date) {
+            return new Intl.DateTimeFormat('en', {
+                hour: 'numeric',
+                minute: 'numeric',
+                hour12: true
+            }).format(date);
+        }
+
+        function showError(message) {
+            clearTimeout(errorTimeout);
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${message}`;
+            chatMessages.appendChild(errorDiv);
+            errorTimeout = setTimeout(() => errorDiv.remove(), 5000);
+        }
 
         function appendMessage(message, className) {
             if (className === 'bot-message') {
@@ -371,6 +435,9 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${className}`;
             
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+
             const avatar = document.createElement('div');
             avatar.className = 'avatar';
             avatar.innerHTML = className === 'user-message' ? 
@@ -380,16 +447,27 @@
             const bubble = document.createElement('div');
             bubble.className = 'message-bubble';
             
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'message-info';
+            infoDiv.innerHTML = `
+                <span class="timestamp">${formatTimestamp(new Date())}</span>
+                ${className === 'user-message' ? '<span class="status-indicator"><i class="fas fa-check"></i></span>' : ''}
+            `;
+            
             if (className === 'bot-message') {
                 const textSpan = document.createElement('span');
                 textSpan.className = 'typing-text';
+                const cursor = document.createElement('span');
+                cursor.className = 'cursor';
                 bubble.appendChild(textSpan);
+                bubble.appendChild(cursor);
                 
                 messageDiv.appendChild(avatar);
-                messageDiv.appendChild(bubble);
+                messageDiv.appendChild(contentDiv);
+                contentDiv.appendChild(bubble);
+                contentDiv.appendChild(infoDiv);
                 chatMessages.appendChild(messageDiv);
                 
-                // Typing effect
                 let i = 0;
                 const speed = 30; // ms per character
                 function typeWriter() {
@@ -398,14 +476,20 @@
                         i++;
                         chatMessages.scrollTop = chatMessages.scrollHeight;
                         setTimeout(typeWriter, speed);
+                    } else {
+                        cursor.style.display = 'none';
+                        messageReceivedSound.play().catch(() => {});
                     }
                 }
-                typeWriter();
+                setTimeout(typeWriter, 500);
             } else {
                 bubble.textContent = message;
                 messageDiv.appendChild(avatar);
-                messageDiv.appendChild(bubble);
+                messageDiv.appendChild(contentDiv);
+                contentDiv.appendChild(bubble);
+                contentDiv.appendChild(infoDiv);
                 chatMessages.appendChild(messageDiv);
+                messageSentSound.play().catch(() => {});
             }
             
             chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -444,6 +528,11 @@
                 e.preventDefault();
                 sendMessage();
             }
+        });
+
+        socket.on('error', (error) => {
+            showError(error.message || 'An error occurred');
+            enableInput();
         });
 
         // Initial state
